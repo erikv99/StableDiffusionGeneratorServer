@@ -1,0 +1,16 @@
+# torch==2.1.0+cu121
+# torchvision==0.16.+cu121
+# # torch==2.3.0+cu121
+# # torchvision==0.15.2+cu121
+# # torch==2.3.0+cu118
+# # torchvision==0.18.0+cu118
+# diffusers==0.25.0
+# transformers==4.36.2
+# huggingface-hub==0.20.2
+# spaces==0.19.4
+# numpy
+# accelerate
+# safetensors
+# omegaconf
+# peft
+# gradio>=4.0.0
