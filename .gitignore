@@ -2,3 +2,4 @@
 /myVenv
 *.png
 *.jpg
+/__pycache__
