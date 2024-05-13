@@ -1,11 +1,9 @@
 import os
 import torch
-import torchvision
 
 from huggingface_hub import hf_hub_download
-from PhotoMaker.photomaker.pipeline import PhotoMakerStableDiffusionXLPipeline
+from PhotoMaker import PhotoMakerStableDiffusionXLPipeline
 from genarator_settings import GeneratorSettings
-from PIL import Image
 from diffusers.utils import load_image
 from diffusers import DDIMScheduler
 import random
@@ -37,7 +35,6 @@ class Generator:
         self._setup_pipeline()
         self._load_input_images()
 
-        # TODO
 
     @staticmethod
     def retrieve_cuda_info():

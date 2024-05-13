@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# git clone https://github.com/TencentARC/PhotoMaker.git
+# pip install git+https://github.com/TencentARC/PhotoMaker.git
+
+# "To make this script executable, run: chmod +x ubuntu_setup.sh"
+# "To execute the script, run: ./ubuntu_setup.sh"
+
 # Setting it so it exits on failure.
 set -e
 
@@ -33,7 +39,3 @@ git config --global user.name "$username"
 git config --global user.email "$email"
 
 echo "Setup complete."
-
-echo "To make this script executable, run: chmod +x ubuntu_setup.sh"
-echo "To execute the script, run: ./ubuntu_setup.sh"
-
