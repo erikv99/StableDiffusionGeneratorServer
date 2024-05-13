@@ -3,10 +3,11 @@ import torch
 
 from huggingface_hub import hf_hub_download
 from PhotoMaker.photomaker import PhotoMakerStableDiffusionXLPipeline
-from genarator_settings import GeneratorSettings
 from diffusers.utils import load_image
 from diffusers import DDIMScheduler
 import random
+
+from genarator_settings import GeneratorSettings
 
 # TODO: add logging.
 
@@ -20,7 +21,8 @@ class Generator:
     # base_model_path = "SG161222/RealVisXL_V4.0_Lightning"
     BASE_MODEL_PATH = "RunDiffusion/Juggernaut-XL-v9"
     DEVICE = "cuda"
-    DEFAULT_IMAGE_DIR = "./default_images"
+    DEFAULT_IMAGE_DIR = "./input/default"
+    INPUT_DIR = "./input"
     MANUAL_SEED = 42
 
     def __init__(self):
@@ -64,45 +66,51 @@ class Generator:
     # TODO: Clean up, split in to logical (easier digestable) parts and add comments.
     def _setup_pipeline(self):
 
-        pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
+        self.pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
             self.BASE_MODEL_PATH,
             torch_dtype=torch.float16, # TODO expirement with different torch dtypes
             use_safetensors=True,
             variant="fp16"
         )
 
-        pipe.to(self.DEVICE)
+        self.pipe.to(self.DEVICE)
 
         photomaker_model_path = self._retrieve_photomaker()
         weight_name = os.path.basename(photomaker_model_path)
 
-        pipe.load_photomaker_adapter(
+        self.pipe.load_photomaker_adapter(
             pretrained_model_name_or_path_or_dict=photomaker_model_path,
             weight_name=weight_name
         )
 
-        pipe.id_encoder.to(self.DEVICE)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.fuse_lora()
-        self.pipe = pipe
+        self.pipe.id_encoder.to(self.DEVICE)
+        self.pipe.scheduler = DDIMScheduler.from_config(self.pipe.scheduler.config)
+        self.pipe.fuse_lora()
 
-    def generate_image(self, settings: GeneratorSettings):
+    def set_settings(self, settings: GeneratorSettings):
+
+        self._settings = settings
+
+    def generate_image(self):
+
+        if self._settings is None:
+            raise ValueError("No settings have been set for the generator. Please set settings before generating an image.")
 
         generator = torch.Generator(device=self.DEVICE).manual_seed(self.MANUAL_SEED)
 
-        start_merge_step = int(float(settings.style_strength) / 100 * settings.number_of_steps)
+        start_merge_step = int(float(self._settings.style_strength) / 100 * self._settings.number_of_steps)
         if start_merge_step > 30:
             start_merge_step = 30
 
         images = self.pipe(
-            prompt=settings.prompt,
+            prompt=self._settings.prompt,
             input_id_images=self.input_images,
-            negative_prompt=settings.negative_prompt,
+            negative_prompt=self._settings.negative_prompt,
             num_images_per_prompt=1,
-            num_inference_steps=settings.number_of_steps,
+            num_inference_steps=self._settings.number_of_steps,
             start_merge_step=start_merge_step,
             generator=generator,
-            guidance_scale=settings.guidance_scale
+            guidance_scale=self._settings.guidance_scale
         ).images
 
         # NOTE: This is temporary and should be removed if ever adding multiple image generation support.
@@ -131,9 +139,10 @@ class Generator:
         """
 
         def _is_valid(folder):
-            return os.path.isdir(os.path.join(self.DEFAULT_IMAGE_DIR, folder)) and folder != 'default'
+            return os.path.isdir(os.path.join(self.INPUT_DIR, folder)) and folder != 'default'
         
-        valid_input_dirs = [_is_valid(folder) for folder in os.listdir(self.DEFAULT_IMAGE_DIR)]
+        dirs = os.listdir(self.INPUT_DIR)
+        valid_input_dirs = [folder for folder in dirs if _is_valid(folder)]
         return valid_input_dirs if any(valid_input_dirs) else []
 
     def _load_input_images(self):
@@ -152,7 +161,7 @@ class Generator:
 
         # NOTE: For now, we will randomly select a folder from the available input directories.
         random_dir = random.choice(input_dirs)
-        path = os.path.join(self.DEFAULT_IMAGE_DIR, random_dir)
+        path = os.path.join(self.INPUT_DIR, random_dir)
         input_images = []
         
         for filename in os.listdir(path):

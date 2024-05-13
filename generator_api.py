@@ -1,13 +1,25 @@
+import io
+import os
+import datetime
+from flask import request, send_file
 from flask_restful import Resource, reqparse
-import json
 
 from genarator_settings import GeneratorSettings
 from generator import Generator
-from flask import request, send_file
 
 class GeneratorAPI(Resource):
-    
+
+    SAVE_TO_SERVER = False
+
+    def __init__(self):
+        
+        # Since I am testing on an NVIDIA RTX A4000, this code will only use a single generation.
+        # Multi-generator support will be added later if deemed necessary.
+        self._generator =  Generator()       
+
     def get(self):
+        
+        # TODO: Maybe it is nice to have get request return a image with last set settings or default.
         return {"message": "Welcome to the generator API. Please use the POST method to generate images"}
 
     def post(self):
@@ -20,23 +32,42 @@ class GeneratorAPI(Resource):
         parser.add_argument('style_strength', type=float, required=True, help='Style strength is required')
         args = parser.parse_args()
 
-        # TODO: Add actual logging
+        # TODO: Log the request details
         print("IP Address:", request.remote_addr)
         print("User Agent:", request.user_agent.string)
 
         settings = GeneratorSettings(
             args.prompt, 
             args.negative_prompt, 
-            args.steps, 
             args.guidance_scale, 
-            args.style_strength)
+            args.style_strength, 
+            args.steps)
 
-        # Since I am testing on an NVIDIA RTX A4000, this code will only use a single generation.
-        # Multi-generator support will be added later if deemed necessary.
-        generator = Generator()
+        self._generator.set_settings(settings)
+        image = self._generator.generate_image()
+        
+        if self.SAVE_TO_SERVER:
+            self._save_img_to_server(image)
 
-        image = generator.generate_image(settings)
+        # Log the generated image details
+        print("Generated Image Details:")
+        print("  - Size:", image.size)
+        print("  - Mode:", image.mode)
+        print("  - Format:", image.format)
 
-        # TODO: Log creation details, intended for checking any problems / errors
+        image.format = "PNG" # TODO: CHECK IF THIS IS NEEDED
+        
+        # Convert the image to bytes for sending it back
+        bytes_io = io.BytesIO()
+        image.save(bytes_io, 'PNG')
+        bytes_io.seek(0)
 
-        return send_file(image, mimetype='image/png')
+        return send_file(bytes_io, mimetype='image/png')
+
+    def _save_img_to_server(self, image):
+
+        output_dir = "./output"
+        os.makedirs(output_dir, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        output_path = os.path.join(output_dir, f"generated_image_{timestamp}.png")
+        image.save(output_path)
