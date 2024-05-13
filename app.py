@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_restful import Api
 from generatorApi import GeneratorAPI
+from generator import Generator
 
 app = Flask(__name__)
 
@@ -9,7 +10,8 @@ api.add_resource(GeneratorAPI, '/generate')
 
 def main():
 
-    # setting up the generator
+    # Setting up the generator, since i test on a NVIDIA RTX A4000 this will only use a single generation.
+    # Multi generator support will be added later if needed.
     generator = Generator()
 
     # TODO:  Alter before deployment

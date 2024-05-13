@@ -11,3 +11,5 @@ omegaconf
 peft
 gradio>=4.0.0
 Flask==2.2.2
+
+# TODO: check if up to date. might be missing some packages
