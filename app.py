@@ -1,6 +1,6 @@
 from flask import Flask
 from flask_restful import Api
-from generatorApi import GeneratorAPI
+from generator_api import GeneratorAPI
 from generator import Generator
 
 app = Flask(__name__)
