@@ -39,3 +39,5 @@ git config --global user.name "$username"
 git config --global user.email "$email"
 
 echo "Setup complete."
+
+# To run flask run --host=0.0.0.0

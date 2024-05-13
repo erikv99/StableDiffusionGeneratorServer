@@ -2,7 +2,7 @@ import os
 import torch
 
 from huggingface_hub import hf_hub_download
-from PhotoMaker import PhotoMakerStableDiffusionXLPipeline
+from PhotoMaker.photomaker import PhotoMakerStableDiffusionXLPipeline
 from genarator_settings import GeneratorSettings
 from diffusers.utils import load_image
 from diffusers import DDIMScheduler
@@ -165,7 +165,7 @@ class Generator:
         print(f"Number of input images: {len(input_images)}")
 
     def _print_cuda_info(self):
-        cuda_version, cuda_id, cuda_device_name, torch_version = self._retrieve_cuda_info()
+        cuda_version, cuda_id, cuda_device_name, torch_version = self.retrieve_cuda_info()
         print(f'CUDA version: {cuda_version}')
         print(f"ID of current CUDA device: {cuda_id}")
         print(f"Name of current CUDA device: {cuda_device_name}")

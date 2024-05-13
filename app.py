@@ -11,7 +11,7 @@ api.add_resource(GeneratorAPI, '/generate')
 def main():
 
     # TODO:  Alter before deployment
-    app.run(port='8080', debug=True)
+    app.run(port='8080', debug=True, host='0.0.0.0')
 
 if __name__ == "__main__":
     main()
