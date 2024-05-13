@@ -1,6 +1,10 @@
 from flask_restful import Resource, reqparse
 import json
 
+from genarator_settings import GeneratorSettings
+from generator import Generator
+from flask import request, send_file
+
 class GeneratorAPI(Resource):
     
     def get(self):
@@ -16,6 +20,23 @@ class GeneratorAPI(Resource):
         parser.add_argument('style_strength', type=float, required=True, help='Style strength is required')
         args = parser.parse_args()
 
-        print(json.dumps(args, indent=4))
+        # TODO: Add actual logging
+        print("IP Address:", request.remote_addr)
+        print("User Agent:", request.user_agent.string)
 
-        return {"message": "Image generated", "details": args}
+        settings = GeneratorSettings(
+            args.prompt, 
+            args.negative_prompt, 
+            args.steps, 
+            args.guidance_scale, 
+            args.style_strength)
+
+        # Since I am testing on an NVIDIA RTX A4000, this code will only use a single generation.
+        # Multi-generator support will be added later if deemed necessary.
+        generator = Generator()
+
+        image = generator.generate_image(settings)
+
+        # TODO: Log creation details, intended for checking any problems / errors
+
+        return send_file(image, mimetype='image/png')

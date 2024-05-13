@@ -32,14 +32,6 @@ read -p "Enter your git email: " email
 git config --global user.name "$username"
 git config --global user.email "$email"
 
-# Install PhotoMaker package
-echo "Installing PhotoMaker package..."
-pip install git+https://github.com/TencentARC/PhotoMaker.git
-
-# Clone PhotoMaker repository
-echo "Cloning PhotoMaker repository..."
-git clone https://github.com/TencentARC/PhotoMaker.git
-
 echo "Setup complete."
 
 echo "To make this script executable, run: chmod +x ubuntu_setup.sh"

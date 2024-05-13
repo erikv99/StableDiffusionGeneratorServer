@@ -23,6 +23,21 @@ class Generator:
     BASE_MODEL_PATH = "RunDiffusion/Juggernaut-XL-v9"
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./default_images"
+    MANUAL_SEED = 42
+
+    def __init__(self):
+        
+        self.pipe = None
+        self.input_images = []
+
+        # TODO: add gpu only check.
+        
+        self.empty_cache()
+        self._print_cuda_info()
+        self._setup_pipeline()
+        self._load_input_images()
+
+        # TODO
 
     @staticmethod
     def retrieve_cuda_info():
@@ -72,6 +87,29 @@ class Generator:
         pipe.id_encoder.to(self.DEVICE)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.fuse_lora()
+        self.pipe = pipe
+
+    def generate_image(self, settings: GeneratorSettings):
+
+        generator = torch.Generator(device=self.DEVICE).manual_seed(self.MANUAL_SEED)
+
+        start_merge_step = int(float(settings.style_strength) / 100 * settings.number_of_steps)
+        if start_merge_step > 30:
+            start_merge_step = 30
+
+        images = self.pipe(
+            prompt=settings.prompt,
+            input_id_images=self.input_images,
+            negative_prompt=settings.negative_prompt,
+            num_images_per_prompt=1,
+            num_inference_steps=settings.number_of_steps,
+            start_merge_step=start_merge_step,
+            generator=generator,
+            guidance_scale=settings.guidance_scale
+        ).images
+
+        # NOTE: This is temporary and should be removed if ever adding multiple image generation support.
+        return images[0]
 
     # TODO: Move to image loading stuff to it's own module
     def _load_default_images(self):
@@ -101,7 +139,6 @@ class Generator:
         valid_input_dirs = [_is_valid(folder) for folder in os.listdir(self.DEFAULT_IMAGE_DIR)]
         return valid_input_dirs if any(valid_input_dirs) else []
 
-
     def _load_input_images(self):
         """
         Loads input images from the input directories in to self.input_images.
@@ -110,7 +147,8 @@ class Generator:
         input_dirs = self._get_input_dirs()
 
         if not input_dirs:
-            return self._load_default_images()
+            self.input_images = self._load_default_images()
+            return
 
         # TODO: Add input through the API (give image base64's as input? upload endpoint?)
         # TODO: Available input folder selection of by API
@@ -127,16 +165,7 @@ class Generator:
             input_images.append(image)
         
         self.input_images = input_images
-
-    def __init__(self):
-        
-        # TODO: add gpu only check.
-
-        self._print_cuda_info()
-        self._setup_pipeline()
-        self._load_input_images()
-
-        # TODO
+        print(f"Number of input images: {len(input_images)}")
 
     def _print_cuda_info(self):
         cuda_version, cuda_id, cuda_device_name, torch_version = self._retrieve_cuda_info()
@@ -144,7 +173,3 @@ class Generator:
         print(f"ID of current CUDA device: {cuda_id}")
         print(f"Name of current CUDA device: {cuda_device_name}")
         print(f'Torch version: {torch_version}')
-
-    def generate_image(self, settings: GeneratorSettings):
-
-        pass
