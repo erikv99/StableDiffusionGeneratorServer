@@ -9,7 +9,7 @@ from generator import Generator
 
 class GeneratorAPI(Resource):
 
-    SAVE_TO_SERVER = False
+    SAVE_TO_SERVER = True
 
     def __init__(self):
         
@@ -54,6 +54,9 @@ class GeneratorAPI(Resource):
         print("  - Size:", image.size)
         print("  - Mode:", image.mode)
         print("  - Format:", image.format)
+
+        # TODO: This is for easier viewing of the image in postman, definitely not needed in production
+        image = image.resize((512, 512))
 
         image.format = "PNG" # TODO: CHECK IF THIS IS NEEDED
         

@@ -4,7 +4,7 @@ import torch
 from huggingface_hub import hf_hub_download
 from PhotoMaker.photomaker import PhotoMakerStableDiffusionXLPipeline
 from diffusers.utils import load_image
-from diffusers import DDIMScheduler
+from diffusers import DDIMScheduler, DPMSolverMultistepScheduler, DPMSolverSDEScheduler
 import random
 
 from genarator_settings import GeneratorSettings
@@ -18,12 +18,12 @@ class Generator:
 
     # TODO: make base_model_path changeable by endpoint so it can be change client side.
     # base_model_path = 'SG161222/RealVisXL_V4.0'
-    # base_model_path = "SG161222/RealVisXL_V4.0_Lightning"
-    BASE_MODEL_PATH = "RunDiffusion/Juggernaut-XL-v9"
+    BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0_Lightning"
+    # BASE_MODEL_PATH = "RunDiffusion/Juggernaut-XL-v9"
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
-    MANUAL_SEED = 42
+    MANUAL_SEED = 3086006692
 
     def __init__(self):
         
@@ -36,7 +36,6 @@ class Generator:
         self._print_cuda_info()
         self._setup_pipeline()
         self._load_input_images()
-
 
     @staticmethod
     def retrieve_cuda_info():
@@ -84,7 +83,10 @@ class Generator:
         )
 
         self.pipe.id_encoder.to(self.DEVICE)
-        self.pipe.scheduler = DDIMScheduler.from_config(self.pipe.scheduler.config)
+        # self.pipe.scheduler = DDIMScheduler.from_config(self.pipe.scheduler.config)
+        # Set up the DPM++ SDE sampler
+        # self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config) 
+        self.pipe.scheduler = DPMSolverSDEScheduler.from_config(self.pipe.scheduler.config) 
         self.pipe.fuse_lora()
 
     def set_settings(self, settings: GeneratorSettings):
