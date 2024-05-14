@@ -4,6 +4,9 @@
 *.jpg
 /__pycache__
 
+*.pem
+*.key
+
 # Ignore all created input folder except the default one
 /input/*
 !/input/default/

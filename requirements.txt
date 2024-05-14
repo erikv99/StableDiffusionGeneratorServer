@@ -13,5 +13,6 @@ gradio>=4.0.0
 Flask==2.2.2
 flask_restful
 Werkzeug==2.2.2
+pyopenssl
 
 # TODO: check if up to date. might be missing some packages
