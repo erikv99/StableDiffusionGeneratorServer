@@ -6,7 +6,9 @@
 
 *.pem
 *.key
+*.pub
 
 # Ignore all created input folder except the default one
 /input/*
 !/input/default/
+

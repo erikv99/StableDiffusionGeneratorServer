@@ -4,7 +4,7 @@ import datetime
 from flask import request, send_file
 from flask_restful import Resource, reqparse
 
-from genarator_settings import GeneratorSettings
+from generator_settings import GeneratorSettings
 from generator import Generator
 
 class GeneratorAPI(Resource):
@@ -42,6 +42,13 @@ class GeneratorAPI(Resource):
             args.guidance_scale, 
             args.style_strength, 
             args.steps)
+
+        # print("Generator Settings:")
+        # print("  - Prompt:", settings.prompt)
+        # print("  - Negative Prompt:", settings.negative_prompt)
+        # print("  - Steps:", settings.number_of_steps)
+        # print("  - Guidance Scale:", settings.guidance_scale)
+        # print("  - Style Strength:", settings.style_strength)
 
         self._generator.set_settings(settings)
         image = self._generator.generate_image()

@@ -7,7 +7,7 @@ from diffusers.utils import load_image
 from diffusers import DDIMScheduler, DPMSolverMultistepScheduler, DPMSolverSDEScheduler
 import random
 
-from genarator_settings import GeneratorSettings
+from generator_settings import GeneratorSettings
 
 # TODO: add logging.
 
@@ -23,7 +23,6 @@ class Generator:
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
-    MANUAL_SEED = 3086006692
 
     def __init__(self):
         
@@ -93,16 +92,28 @@ class Generator:
 
         self._settings = settings
 
+    def prompt_to_seed(self, prompt):
+
+        return int(hashlib.sha256(prompt.encode()).hexdigest(), 16) % 10**8
+
     def generate_image(self):
 
         if self._settings is None:
             raise ValueError("No settings have been set for the generator. Please set settings before generating an image.")
 
-        generator = torch.Generator(device=self.DEVICE).manual_seed(self.MANUAL_SEED)
+        generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
 
         start_merge_step = int(float(self._settings.style_strength) / 100 * self._settings.number_of_steps)
         if start_merge_step > 30:
             start_merge_step = 30
+
+        # print(f"Prompt: {self._settings.prompt}")
+        # print(f"Input Images: {self.input_images}")
+        # print(f"Negative Prompt: {self._settings.negative_prompt}")
+        # print(f"Number of Inference Steps: {self._settings.number_of_steps}")
+        # print(f"Start Merge Step: {start_merge_step}")
+        # print(f"Generator: {generator}")
+        # print(f"Guidance Scale: {self._settings.guidance_scale}")
 
         images = self.pipe(
             prompt=self._settings.prompt,
@@ -154,6 +165,7 @@ class Generator:
 
         input_dirs = self._get_input_dirs()
 
+        # TODO: This crashes when no input directories are available since input/default and its content is not added to repo
         if not input_dirs:
             self.input_images = self._load_default_images()
             return
