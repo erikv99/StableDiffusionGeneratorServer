@@ -71,7 +71,14 @@ class Generator:
             variant="fp16"
         )
 
+
+        # self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
         self.pipe.to(self.DEVICE)
+
+        # print(self.pipe.device) 
+        # print(self.pipe.dtype)  
+        # self.pipe.device = self.DEVICE
 
         photomaker_model_path = self._retrieve_photomaker()
         weight_name = os.path.basename(photomaker_model_path)
@@ -81,7 +88,7 @@ class Generator:
             weight_name=weight_name
         )
 
-        self.pipe.id_encoder.to(self.DEVICE)
+        self.pipe.id_encoder.to(self.DEVICE)        
         # self.pipe.scheduler = DDIMScheduler.from_config(self.pipe.scheduler.config)
         # Set up the DPM++ SDE sampler
         # self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config) 
@@ -92,9 +99,9 @@ class Generator:
 
         self._settings = settings
 
-    def prompt_to_seed(self, prompt):
+    # def prompt_to_seed(self, prompt):
 
-        return int(hashlib.sha256(prompt.encode()).hexdigest(), 16) % 10**8
+    #     return int(hashlib.sha256(prompt.encode()).hexdigest(), 16) % 10**8
 
     def generate_image(self):
 

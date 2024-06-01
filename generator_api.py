@@ -46,8 +46,12 @@ class GeneratorAPI(Resource):
             args.StyleStrength, 
             args.InferenceSteps)
 
-        self._generator.set_settings(settings)
-        image = self._generator.generate_image()
+
+        try:
+            self._generator.set_settings(settings)
+            image = self._generator.generate_image()
+        except Exception as e:
+            return {"error": str(e)}
         
         if self.SAVE_TO_SERVER:
             self._save_img_to_server(image)
