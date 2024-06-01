@@ -24,12 +24,15 @@ class GeneratorAPI(Resource):
 
     def post(self):
 
+        print(request.json)  # This will log the incoming request data
+
+
         parser = reqparse.RequestParser()
-        parser.add_argument('prompt', type=str, required=True, help='Prompt is required')
-        parser.add_argument('negative_prompt', type=str, required=True, help='Negative prompt is required')
-        parser.add_argument('steps', type=int, required=True, help='Number of steps is required')
-        parser.add_argument('guidance_scale', type=float, required=True, help='Guidance scale is required')
-        parser.add_argument('style_strength', type=float, required=True, help='Style strength is required')
+        parser.add_argument('Prompt', type=str, required=True, help='Prompt is required')
+        parser.add_argument('NegativePrompt', type=str, required=True, help='Negative prompt is required')
+        parser.add_argument('InferenceSteps', type=int, required=True, help='Number of steps is required')
+        parser.add_argument('GuidanceScale', type=float, required=True, help='Guidance scale is required')
+        parser.add_argument('StyleStrength', type=float, required=True, help='Style strength is required')
         args = parser.parse_args()
 
         # TODO: Log the request details
@@ -37,18 +40,11 @@ class GeneratorAPI(Resource):
         print("User Agent:", request.user_agent.string)
 
         settings = GeneratorSettings(
-            args.prompt, 
-            args.negative_prompt, 
-            args.guidance_scale, 
-            args.style_strength, 
-            args.steps)
-
-        # print("Generator Settings:")
-        # print("  - Prompt:", settings.prompt)
-        # print("  - Negative Prompt:", settings.negative_prompt)
-        # print("  - Steps:", settings.number_of_steps)
-        # print("  - Guidance Scale:", settings.guidance_scale)
-        # print("  - Style Strength:", settings.style_strength)
+            args.Prompt, 
+            args.NegativePrompt, 
+            args.GuidanceScale, 
+            args.StyleStrength, 
+            args.InferenceSteps)
 
         self._generator.set_settings(settings)
         image = self._generator.generate_image()
