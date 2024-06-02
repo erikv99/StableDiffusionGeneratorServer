@@ -30,11 +30,13 @@ class Generator:
         self.input_images = []
 
         # TODO: add gpu only check.
-        
+        self._create_input_folder_if_needed()
         self.empty_cache()
         self._print_cuda_info()
         self._setup_pipeline()
         self._load_input_images()
+
+        print("Generator initialized.")
 
     @staticmethod
     def retrieve_cuda_info():
@@ -114,14 +116,6 @@ class Generator:
         if start_merge_step > 30:
             start_merge_step = 30
 
-        # print(f"Prompt: {self._settings.prompt}")
-        # print(f"Input Images: {self.input_images}")
-        # print(f"Negative Prompt: {self._settings.negative_prompt}")
-        # print(f"Number of Inference Steps: {self._settings.number_of_steps}")
-        # print(f"Start Merge Step: {start_merge_step}")
-        # print(f"Generator: {generator}")
-        # print(f"Guidance Scale: {self._settings.guidance_scale}")
-
         images = self.pipe(
             prompt=self._settings.prompt,
             input_id_images=self.input_images,
@@ -146,7 +140,14 @@ class Generator:
             image = load_image(image_path)
             default_images.append(image)
 
+        if (len(default_images) == 0):
+            raise ValueError("No default images found in the default image directory.")
+
         return default_images
+
+    def _create_input_folder_if_needed(self):
+        if not os.path.exists(self.INPUT_DIR):
+            os.makedirs(self.INPUT_DIR)
 
     def _get_input_dirs(self):
         """
