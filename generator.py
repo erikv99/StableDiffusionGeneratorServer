@@ -26,6 +26,9 @@ class Generator:
 
     def __init__(self):
         
+        print(torch.cuda.is_available())
+        print(torch.cuda.current_device())
+        print(torch.cuda.get_device_name(torch.cuda.current_device()))
         self.pipe = None
         self.input_images = []
 
@@ -66,36 +69,43 @@ class Generator:
     # TODO: Clean up, split in to logical (easier digestable) parts and add comments.
     def _setup_pipeline(self):
 
-        self.pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
-            self.BASE_MODEL_PATH,
-            torch_dtype=torch.float16, # TODO expirement with different torch dtypes
-            use_safetensors=True,
-            variant="fp16"
-        )
+        try:
+            self.device = torch.device(self.DEVICE)
+            print(f"Using device: {self.device}")
 
+            self.pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
+                self.BASE_MODEL_PATH,
+                torch_dtype=torch.float16,  # TODO: experiment with different torch dtypes
+                use_safetensors=True,
+                variant="fp16"
+            )
 
-        # self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+            self.pipe.to(self.device)
 
-        self.pipe.to(self.DEVICE)
+            photomaker_model_path = self._retrieve_photomaker()
+            weight_name = os.path.basename(photomaker_model_path)
 
-        # print(self.pipe.device) 
-        # print(self.pipe.dtype)  
-        # self.pipe.device = self.DEVICE
+            self.pipe.load_photomaker_adapter(
+                pretrained_model_name_or_path_or_dict=photomaker_model_path,
+                weight_name=weight_name
+            )
 
-        photomaker_model_path = self._retrieve_photomaker()
-        weight_name = os.path.basename(photomaker_model_path)
+            if hasattr(self.pipe, 'id_encoder'):
+                
+                self.pipe.id_encoder.to(self.device)
 
-        self.pipe.load_photomaker_adapter(
-            pretrained_model_name_or_path_or_dict=photomaker_model_path,
-            weight_name=weight_name
-        )
+            else:
+                
+                raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
 
-        self.pipe.id_encoder.to(self.DEVICE)        
-        # self.pipe.scheduler = DDIMScheduler.from_config(self.pipe.scheduler.config)
-        # Set up the DPM++ SDE sampler
-        # self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config) 
-        self.pipe.scheduler = DPMSolverSDEScheduler.from_config(self.pipe.scheduler.config) 
-        self.pipe.fuse_lora()
+            self.pipe.scheduler = DPMSolverSDEScheduler.from_config(self.pipe.scheduler.config)
+            self.pipe.fuse_lora()
+            
+            print("Pipeline setup completed successfully.")
+        
+        except Exception as e:
+            print(f"Error during pipeline setup: {e}")
+            raise
 
     def set_settings(self, settings: GeneratorSettings):
 
@@ -110,7 +120,7 @@ class Generator:
         if self._settings is None:
             raise ValueError("No settings have been set for the generator. Please set settings before generating an image.")
 
-        generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
+        generator = torch.Generator(device=self.device).manual_seed(torch.randint(0, 1000000, (1,)).item())
 
         start_merge_step = int(float(self._settings.style_strength) / 100 * self._settings.number_of_steps)
         if start_merge_step > 30:
