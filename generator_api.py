@@ -15,7 +15,8 @@ class GeneratorAPI(Resource):
         
         # Since I am testing on an NVIDIA RTX A4000, this code will only use a single generation.
         # Multi-generator support will be added later if deemed necessary.
-        self._generator =  Generator()       
+        self._generator =  Generator()
+        print("\nGenerator API initialized.\n")
 
     def get(self):
         
