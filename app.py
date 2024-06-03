@@ -1,15 +1,40 @@
 from flask import Flask
 from flask_restful import Api
 from generator_api import GeneratorAPI
+import os
 
 app = Flask(__name__)
 
 api = Api(app)
 api.add_resource(GeneratorAPI, '/generate')
 
+# This is temporary, input will be send with the request
+def _validate_input_dir():
+
+    if not os.path.exists("./input"):
+
+        print("Input directory not found. Creating input directory.")
+        os.makedirs("./input")
+
+    if not os.path.exists("./input/default"):
+
+        print("Default input directory not found. Creating default input directory.")
+        os.makedirs("./input/default")
+
+    # Todo: Add some default images to the default input directory i guess
+
+def _validate_output_dir():
+
+    if not os.path.exists("./output"):
+
+        print("Output directory not found. Creating output directory.")
+        os.makedirs("./output")
+
 def main():
 
-    # TODO:  Alter before deployment
+    _validate_output_dir()
+    _validate_input_dir()
+
     app.run(debug=True, host='0.0.0.0', port=5000)
 
 if __name__ == "__main__":

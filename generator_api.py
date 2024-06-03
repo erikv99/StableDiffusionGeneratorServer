@@ -35,8 +35,7 @@ class GeneratorAPI(Resource):
         parser.add_argument('StyleStrength', type=float, required=True, help='Style strength is required')
         args = parser.parse_args()
 
-        # TODO: Log the request details
-        print("IP Address:", request.remote_addr)
+        # TODO: Log the request details to file.
         print("User Agent:", request.user_agent.string)
 
         settings = GeneratorSettings(
@@ -45,7 +44,6 @@ class GeneratorAPI(Resource):
             args.GuidanceScale, 
             args.StyleStrength, 
             args.InferenceSteps)
-
 
         try:
             self._generator.set_settings(settings)

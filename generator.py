@@ -17,9 +17,9 @@ from generator_settings import GeneratorSettings
 class Generator:
 
     # TODO: make base_model_path changeable by endpoint so it can be change client side.
-    # base_model_path = 'SG161222/RealVisXL_V4.0'
+    
     BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0_Lightning"
-    # BASE_MODEL_PATH = "RunDiffusion/Juggernaut-XL-v9"
+ 
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
@@ -33,7 +33,6 @@ class Generator:
         self.input_images = []
 
         # TODO: add gpu only check.
-        self._create_input_folder_if_needed()
         self.empty_cache()
         self._print_cuda_info()
         self._setup_pipeline()
@@ -111,10 +110,6 @@ class Generator:
 
         self._settings = settings
 
-    # def prompt_to_seed(self, prompt):
-
-    #     return int(hashlib.sha256(prompt.encode()).hexdigest(), 16) % 10**8
-
     def generate_image(self):
 
         if self._settings is None:
@@ -154,10 +149,6 @@ class Generator:
             raise ValueError("No default images found in the default image directory.")
 
         return default_images
-
-    def _create_input_folder_if_needed(self):
-        if not os.path.exists(self.INPUT_DIR):
-            os.makedirs(self.INPUT_DIR)
 
     def _get_input_dirs(self):
         """
