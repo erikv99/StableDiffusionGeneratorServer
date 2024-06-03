@@ -97,7 +97,8 @@ class Generator:
                 
                 raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
 
-            self.pipe.scheduler = DPMSolverSDEScheduler.from_config(self.pipe.scheduler.config)
+            # DPMSolverMultistepScheduler
+            self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config)
             self.pipe.fuse_lora()
             
             print("Pipeline setup completed successfully.")
@@ -129,7 +130,9 @@ class Generator:
             num_inference_steps=self._settings.number_of_steps,
             start_merge_step=start_merge_step,
             generator=generator,
-            guidance_scale=self._settings.guidance_scale
+            guidance_scale=self._settings.guidance_scale,
+            height=512,
+            width=512
         ).images
 
         # NOTE: This is temporary and should be removed if ever adding multiple image generation support.
