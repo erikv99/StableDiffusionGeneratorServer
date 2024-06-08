@@ -1,12 +1,16 @@
 from flask import Flask
 from flask_restful import Api
-from generator_api import GeneratorAPI
+
+from clear_cache_api import ClearCacheAPI
+from generate_api import GenerateAPI
+
 import os
 
 app = Flask(__name__)
 
 api = Api(app)
-api.add_resource(GeneratorAPI, '/generate')
+api.add_resource(GenerateAPI, '/generate')
+api.add_resource(ClearCacheAPI, '/clear-cache')
 
 # This is temporary, input will be send with the request
 def _validate_input_dir():

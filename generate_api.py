@@ -7,7 +7,7 @@ from flask_restful import Resource, reqparse
 from generator_settings import GeneratorSettings
 from generator import Generator
 
-class GeneratorAPI(Resource):
+class GenerateAPI(Resource):
 
     SAVE_TO_SERVER = True
 

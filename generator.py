@@ -32,10 +32,15 @@ class Generator:
         self.pipe = None
         self.input_images = []
 
-        # TODO: add gpu only check.
-        self.empty_cache()
-        self._print_cuda_info()
+        torch.cuda.empty_cache()
+        
         self._setup_pipeline()
+
+        if (self.DEVICE == "cuda" and not torch.cuda.is_available()):
+            raise ValueError("CUDA is not available on this device.")
+        
+        self._print_cuda_info()
+        
         self._load_input_images()
 
         print("Generator initialized.")
@@ -48,10 +53,6 @@ class Generator:
         cuda_device_name = torch.cuda.get_device_name(cuda_id)
         torch_version = torch.__version__
         return cuda_version, cuda_id, cuda_device_name, torch_version
-
-    @staticmethod
-    def empty_cache():
-        torch.cuda.empty_cache()
 
     # TODO: Consider moving to download helper/service
     def _retrieve_photomaker(self) -> str:
@@ -70,11 +71,12 @@ class Generator:
 
         try:
             self.device = torch.device(self.DEVICE)
+            
             print(f"Using device: {self.device}")
 
             self.pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
                 self.BASE_MODEL_PATH,
-                torch_dtype=torch.float16,  # TODO: experiment with different torch dtypes
+                torch_dtype=torch.float16,
                 use_safetensors=True,
                 variant="fp16"
             )
