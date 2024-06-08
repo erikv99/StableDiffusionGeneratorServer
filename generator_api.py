@@ -48,6 +48,9 @@ class GeneratorAPI(Resource):
 
         try:
             self._generator.set_settings(settings)
+
+            # Add develop mode which returns default image.
+
             image = self._generator.generate_image()
         except Exception as e:
             return {"error": str(e)}
