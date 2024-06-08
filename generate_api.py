@@ -46,6 +46,14 @@ class GenerateAPI(Resource):
             args.StyleStrength, 
             args.InferenceSteps)
 
+        # Log the used settings
+        print("Used Settings:")
+        print("  - Prompt:", settings.prompt)
+        print("  - Negative Prompt:", settings.negative_prompt)
+        print("  - Inference Steps:", settings.number_of_steps)
+        print("  - Guidance Scale:", settings.guidance_scale)
+        print("  - Style Strength:", settings.style_strength)
+
         try:
             self._generator.set_settings(settings)
 
