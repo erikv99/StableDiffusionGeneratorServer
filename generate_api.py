@@ -1,6 +1,7 @@
 import io
 import os
 import datetime
+
 from flask import request, send_file
 from flask_restful import Resource, reqparse
 
@@ -11,11 +12,11 @@ class GenerateAPI(Resource):
 
     SAVE_TO_SERVER = True
 
-    def __init__(self):
+    def __init__(self, generator: Generator):
         
         # Since I am testing on an NVIDIA RTX A4000, this code will only use a single generation.
         # Multi-generator support will be added later if deemed necessary.
-        self._generator =  Generator()
+        self._generator = generator
         print("\nGenerator API initialized.\n")
 
     def get(self):
@@ -25,8 +26,7 @@ class GenerateAPI(Resource):
 
     def post(self):
 
-        print(request.json)  # This will log the incoming request data
-
+        print(request.json)
 
         parser = reqparse.RequestParser()
         parser.add_argument('Prompt', type=str, required=True, help='Prompt is required')
@@ -46,7 +46,6 @@ class GenerateAPI(Resource):
             args.StyleStrength, 
             args.InferenceSteps)
 
-        # Log the used settings
         print("Used Settings:")
         print("  - Prompt:", settings.prompt)
         print("  - Negative Prompt:", settings.negative_prompt)
@@ -56,12 +55,10 @@ class GenerateAPI(Resource):
 
         try:
             self._generator.set_settings(settings)
-
-            # Add develop mode which returns default image.
-
             image = self._generator.generate_image()
+
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": str(e.args[0])}, 400
         
         if self.SAVE_TO_SERVER:
             self._save_img_to_server(image)
@@ -72,15 +69,14 @@ class GenerateAPI(Resource):
         print("  - Mode:", image.mode)
         print("  - Format:", image.format)
 
-        # TODO: This is for easier viewing of the image in postman, definitely not needed in production
-        image = image.resize((512, 512))
-
         image.format = "PNG" # TODO: CHECK IF THIS IS NEEDED
         
         # Convert the image to bytes for sending it back
         bytes_io = io.BytesIO()
         image.save(bytes_io, 'PNG')
         bytes_io.seek(0)
+
+        print("Generated imf byte size:", len(bytes_io.getvalue()))
 
         return send_file(bytes_io, mimetype='image/png')
 

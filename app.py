@@ -3,16 +3,19 @@ from flask_restful import Api
 
 from clear_cache_api import ClearCacheAPI
 from generate_api import GenerateAPI
+from generator import Generator
 
 import os
 
 app = Flask(__name__)
-
 api = Api(app)
-api.add_resource(GenerateAPI, '/generate')
+
+generator = Generator()
+
+api.add_resource(GenerateAPI, '/generate', resource_class_kwargs={'generator': generator})
 api.add_resource(ClearCacheAPI, '/clear-cache')
 
-# This is temporary, input will be send with the request
+# This is temporary, input will be handled differently later.
 def _validate_input_dir():
 
     if not os.path.exists("./input"):
