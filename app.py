@@ -10,11 +10,6 @@ import os
 app = Flask(__name__)
 api = Api(app)
 
-generator = Generator()
-
-api.add_resource(GenerateAPI, '/generate', resource_class_kwargs={'generator': generator})
-api.add_resource(ClearCacheAPI, '/clear-cache')
-
 # This is temporary, input will be handled differently later.
 def _validate_input_dir():
 
@@ -38,9 +33,13 @@ def _validate_output_dir():
         os.makedirs("./output")
 
 def main():
-
+    
     _validate_output_dir()
     _validate_input_dir()
+    generator = Generator()
+
+    api.add_resource(GenerateAPI, '/generate', resource_class_kwargs={'generator': generator})
+    api.add_resource(ClearCacheAPI, '/clear-cache')
 
     app.run(debug=True, host='0.0.0.0', port=5000)
 
