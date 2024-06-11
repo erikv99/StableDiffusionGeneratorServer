@@ -8,13 +8,21 @@ from diffusers import DDIMScheduler, DPMSolverMultistepScheduler, DPMSolverSDESc
 import random
 
 from generator_settings import GeneratorSettings
+from enum import Enum
 
 # TODO: add logging.
 
 # Not sure if i like the Generator as a object approach. 
 # TODO: Consider a function based approach.
 
+
 class Generator:
+
+    class GeneratorStatus(Enum):
+        Off = 0
+        Initializing = 1
+        Error = 2
+        Running = 3
 
     # TODO: make base_model_path changeable by endpoint so it can be change client side.
     
@@ -26,24 +34,47 @@ class Generator:
 
     def __init__(self):
         
-        print(torch.cuda.is_available())
-        print(torch.cuda.current_device())
-        print(torch.cuda.get_device_name(torch.cuda.current_device()))
+        print("Initializing generator...")
+
         self.pipe = None
         self.input_images = []
+        self.status = self.GeneratorStatus.Initializing
 
+        print("Clearing Cuda cache...")
         torch.cuda.empty_cache()
         
+        print("Attempting to setup pipeline...")
         self._setup_pipeline()
 
         if (self.DEVICE == "cuda" and not torch.cuda.is_available()):
             raise ValueError("CUDA is not available on this device.")
         
-        self._print_cuda_info()
+        # self._print_cuda_info()
         
+        print("Loading input images...")
         self._load_input_images()
 
         print("Generator initialized.")
+
+    @staticmethod
+    def empty_cuda_cache_if_threshold_reached(threshold_ratio=0.2): 
+        """
+            Empties the CUDA cache if the free memory is below a certain threshold.
+            Threshold is calculated as a ratio of the total memory available on the device.
+            E.g. if the threshold ratio is 0.2, the threshold will be 20% of the total memory available on the device.
+        """
+    
+        total_memory = torch.cuda.get_device_properties(0).total_memory
+        reserved_memory = torch.cuda.memory_reserved(0)
+        allocated_memory = torch.cuda.memory_allocated(0)
+        
+        free_memory = reserved_memory - allocated_memory
+        threshold = total_memory * threshold_ratio
+
+        if free_memory < threshold:
+
+            print("Memory below threshold. Clearing CUDA cache...")
+            torch.cuda.empty_cache()
 
     @staticmethod
     def retrieve_cuda_info():

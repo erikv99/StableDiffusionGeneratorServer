@@ -26,6 +26,8 @@ class GenerateAPI(Resource):
 
     def post(self):
 
+        self._generator.empty_cuda_cache_if_threshold_reached()
+
         print(request.json)
 
         parser = reqparse.RequestParser()
