@@ -8,7 +8,7 @@ from flask_restful import Resource, reqparse
 from generator_settings import GeneratorSettings
 from generator import Generator
 
-class GenerateAPI(Resource):
+class EnqueueGeneration(Resource):
 
     SAVE_TO_SERVER = True
 

@@ -1,7 +1,7 @@
 from flask_restful import Resource
 import torch
 
-class ClearCacheAPI(Resource):
+class ClearCache(Resource):
 
     def post(self):
 
