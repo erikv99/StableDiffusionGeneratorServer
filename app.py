@@ -1,8 +1,10 @@
+import queue
 from flask import Flask
 from flask_restful import Api
 
 from api.clear_cache import ClearCache
 from api.enqueue_generation import EnqueueGeneration
+from api.retrieve_output import RetrieveOutput
 from generator import Generator
 
 import os
@@ -36,9 +38,11 @@ def main():
     
     _validate_output_dir()
     _validate_input_dir()
-    generator = Generator()
-
+    
+    generator = Generator()         
+    
     api.add_resource(EnqueueGeneration, '/enqueue-generation', resource_class_kwargs={'generator': generator})
+    api.add_resource(RetrieveOutput, '/retrieve-output/<string:id>', resource_class_kwargs={'generator': generator})
     api.add_resource(ClearCache, '/clear-cache')
 
     app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1,33 +1,25 @@
 import os
+import time
+import uuid
 import torch
-
+import queue
+import threading
 from huggingface_hub import hf_hub_download
 from PhotoMaker.photomaker import PhotoMakerStableDiffusionXLPipeline
 from diffusers.utils import load_image
 from diffusers import DDIMScheduler, DPMSolverMultistepScheduler, DPMSolverSDEScheduler
 import random
-
-from generator_settings import GeneratorSettings
 from enum import Enum
-
-# TODO: add logging.
-
-# Not sure if i like the Generator as a object approach. 
-# TODO: Consider a function based approach.
-
+from generator_settings import GeneratorSettings
 
 class Generator:
-
     class GeneratorStatus(Enum):
         Off = 0
         Initializing = 1
         Error = 2
         Running = 3
 
-    # TODO: make base_model_path changeable by endpoint so it can be change client side.
-    
     BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0_Lightning"
- 
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
@@ -35,10 +27,12 @@ class Generator:
     def __init__(self):
         
         print("Initializing generator...")
-
-        self.pipe = None
-        self.input_images = []
-        self.status = self.GeneratorStatus.Initializing
+        
+        self._pipe = None
+        self._input_images = []
+        self._results = {}
+        self._status = self.GeneratorStatus.Initializing
+        self._request_queue: queue[str, GeneratorSettings] = queue.Queue()
 
         print("Clearing Cuda cache...")
         torch.cuda.empty_cache()
@@ -46,15 +40,19 @@ class Generator:
         print("Attempting to setup pipeline...")
         self._setup_pipeline()
 
-        if (self.DEVICE == "cuda" and not torch.cuda.is_available()):
+        if self.DEVICE == "cuda" and not torch.cuda.is_available():
             raise ValueError("CUDA is not available on this device.")
-        
-        # self._print_cuda_info()
         
         print("Loading input images...")
         self._load_input_images()
 
         print("Generator initialized.")
+        self._status = self.GeneratorStatus.Running
+        
+        # Start the thread to process the queue
+        self._thread = threading.Thread(target=self._process_queue)
+        self._thread.daemon = True
+        self._thread.start()
 
     @staticmethod
     def empty_cuda_cache_if_threshold_reached(threshold_ratio=0.2): 
@@ -97,73 +95,110 @@ class Generator:
 
         return hf_hub_download(repo_id="TencentARC/PhotoMaker", filename="photomaker-v1.bin", repo_type="model")
 
+    def enqueue_request(self, settings: GeneratorSettings) -> str:
+        
+        request_id = str(uuid.uuid4())
+        self._request_queue.put((request_id, settings))
+        
+        return request_id
+
+    def _process_queue(self):
+        """
+            Processes the request queue.
+            This function must run in a separate thread to allow for concurrent processing of requests.
+        """ 
+           
+        while True:
+            
+            while not self._request_queue.empty():
+            
+                request_id, data = self._request_queue.get()
+            
+                try:
+                    result = self._process_request(data)
+                    
+                    # What actually is our result here? Image obj? a base64 string? TODO
+                    self._results[request_id] = result
+            
+                finally:
+                    self._request_queue.task_done()
+                    
+            time.sleep(5)
+
+    def get_result(self, request_uuid):
+        
+        if request_uuid in self._results: 
+            return self._results.get(request_uuid) 
+        
+        raise ValueError(f"Request with UUID {request_uuid} not found.")
+
+    def _process_request(self, settings):
+        return self.generate_image(settings)
+    
+    def clear_queue(self):
+        self._request_queue.queue.clear()
+
     # TODO: Clean up, split in to logical (easier digestable) parts and add comments.
     def _setup_pipeline(self):
 
         try:
-            self.device = torch.device(self.DEVICE)
             
+            self.device = torch.device(self.DEVICE)
             print(f"Using device: {self.device}")
 
-            self.pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
+            self._pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
                 self.BASE_MODEL_PATH,
                 torch_dtype=torch.float16,
                 use_safetensors=True,
                 variant="fp16"
             )
 
-            self.pipe.to(self.device)
+            self._pipe.to(self.device)
 
             photomaker_model_path = self._retrieve_photomaker()
             weight_name = os.path.basename(photomaker_model_path)
 
-            self.pipe.load_photomaker_adapter(
+            self._pipe.load_photomaker_adapter(
                 pretrained_model_name_or_path_or_dict=photomaker_model_path,
                 weight_name=weight_name
             )
 
-            if hasattr(self.pipe, 'id_encoder'):
-                
-                self.pipe.id_encoder.to(self.device)
+            if hasattr(self._pipe, 'id_encoder'):
+                self._pipe.id_encoder.to(self.device)
 
             else:
-                
                 raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
 
             # DPMSolverMultistepScheduler
-            self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config)
-            self.pipe.fuse_lora()
+            self._pipe.scheduler = DPMSolverMultistepScheduler.from_config(self._pipe.scheduler.config)
+            self._pipe.fuse_lora()
             
             print("Pipeline setup completed successfully.")
         
         except Exception as e:
             print(f"Error during pipeline setup: {e}")
             raise
+        
+    def generate_image(self, settings: GeneratorSettings):
 
-    def set_settings(self, settings: GeneratorSettings):
-
-        self._settings = settings
-
-    def generate_image(self):
-
-        if self._settings is None:
-            raise ValueError("No settings have been set for the generator. Please set settings before generating an image.")
+        if settings is None:
+            raise ValueError("No settings have been provided.")
 
         generator = torch.Generator(device=self.device).manual_seed(torch.randint(0, 1000000, (1,)).item())
 
-        start_merge_step = int(float(self._settings.style_strength) / 100 * self._settings.number_of_steps)
+        start_merge_step = int(float(self.settings.style_strength) / 100 * self.settings.number_of_steps)
         if start_merge_step > 30:
             start_merge_step = 30
 
-        images = self.pipe(
-            prompt=self._settings.prompt,
-            input_id_images=self.input_images,
-            negative_prompt=self._settings.negative_prompt,
+        images = self._pipe(
+            prompt=self.settings.prompt,
+            input_id_images=self._input_images,
+            negative_prompt=self.settings.negative_prompt,
             num_images_per_prompt=1,
-            num_inference_steps=self._settings.number_of_steps,
+            num_inference_steps=self.settings.number_of_steps,
             start_merge_step=start_merge_step,
             generator=generator,
-            guidance_scale=self._settings.guidance_scale,
+            guidance_scale=self.settings.guidance_scale,
             height=512,
             width=512
         ).images
@@ -212,7 +247,7 @@ class Generator:
 
         # TODO: This crashes when no input directories are available since input/default and its content is not added to repo
         if not input_dirs:
-            self.input_images = self._load_default_images()
+            self._input_images = self._load_default_images()
             return
 
         # TODO: Add input through the API (give image base64's as input? upload endpoint?)
@@ -229,7 +264,7 @@ class Generator:
             image = load_image(image_path)
             input_images.append(image)
         
-        self.input_images = input_images
+        self._input_images = input_images
         print(f"Number of input images: {len(input_images)}")
 
     def _print_cuda_info(self):

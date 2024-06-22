@@ -56,8 +56,8 @@ class EnqueueGeneration(Resource):
         print("  - Style Strength:", settings.style_strength)
 
         try:
-            self._generator.set_settings(settings)
-            image = self._generator.generate_image()
+            request_uuid = self._generator.enqueue_request(settings)
+            return {"uuid": request_uuid}, 202
 
         except Exception as e:
             return {"error": str(e.args[0])}, 400
