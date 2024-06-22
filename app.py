@@ -1,4 +1,3 @@
-import queue
 from flask import Flask
 from flask_restful import Api
 
@@ -8,6 +7,8 @@ from api.retrieve_output import RetrieveOutput
 from generator import Generator
 
 import os
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 app = Flask(__name__)
 api = Api(app)

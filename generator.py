@@ -17,7 +17,8 @@ class Generator:
         Off = 0
         Initializing = 1
         Error = 2
-        Running = 3
+        Available = 3
+        Generating = 4
 
     BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0_Lightning"
     DEVICE = "cuda"
@@ -47,7 +48,7 @@ class Generator:
         self._load_input_images()
 
         print("Generator initialized.")
-        self._status = self.GeneratorStatus.Running
+        self._status = self.GeneratorStatus.Available
         
         # Start the thread to process the queue
         self._thread = threading.Thread(target=self._process_queue)
@@ -103,27 +104,31 @@ class Generator:
         return request_id
 
     def _process_queue(self):
-        """
-            Processes the request queue.
-            This function must run in a separate thread to allow for concurrent processing of requests.
-        """ 
-           
         while True:
             
-            while not self._request_queue.empty():
             
+            while not self._status is self.GeneratorStatus.Generating and not self._request_queue.empty():
+                
                 request_id, data = self._request_queue.get()
-            
-                try:
-                    result = self._process_request(data)
-                    
-                    # What actually is our result here? Image obj? a base64 string? TODO
-                    self._results[request_id] = result
-            
-                finally:
-                    self._request_queue.task_done()
-                    
-            time.sleep(5)
+                retries = 0
+                
+                while retries < 3:
+                    try:
+                        result = self._process_request(data)
+                        self._results[request_id] = result
+                        break
+                    except torch.cuda.OutOfMemoryError as e:
+                        retries += 1
+                        print(f"Out of memory error: {e}. Retrying ({retries}/3) after clearing cache...")
+                        self.empty_cuda_cache_if_threshold_reached()
+                        time.sleep(10)  # Wait before retrying
+                if retries == 3:
+                    print(f"Retry failed after 3 attempts")
+                    self._results[request_id] = "Out of memory error"
+                self._request_queue.task_done()
+                
+            print("Queue is empty. Checking again in 5 seconds...")
+            time.sleep(5)  # Check the queue every 5 seconds
 
     def get_result(self, request_uuid):
         
@@ -133,6 +138,8 @@ class Generator:
         raise ValueError(f"Request with UUID {request_uuid} not found.")
 
     def _process_request(self, settings):
+        
+        self._status = self.GeneratorStatus.Generating
         return self.generate_image(settings)
     
     def clear_queue(self):
@@ -183,22 +190,22 @@ class Generator:
 
         if settings is None:
             raise ValueError("No settings have been provided.")
-
+        
         generator = torch.Generator(device=self.device).manual_seed(torch.randint(0, 1000000, (1,)).item())
 
-        start_merge_step = int(float(self.settings.style_strength) / 100 * self.settings.number_of_steps)
+        start_merge_step = int(float(settings.style_strength) / 100 * settings.number_of_steps)
         if start_merge_step > 30:
             start_merge_step = 30
 
         images = self._pipe(
-            prompt=self.settings.prompt,
+            prompt=settings.prompt,
             input_id_images=self._input_images,
-            negative_prompt=self.settings.negative_prompt,
+            negative_prompt=settings.negative_prompt,
             num_images_per_prompt=1,
-            num_inference_steps=self.settings.number_of_steps,
+            num_inference_steps=settings.number_of_steps,
             start_merge_step=start_merge_step,
             generator=generator,
-            guidance_scale=self.settings.guidance_scale,
+            guidance_scale=settings.guidance_scale,
             height=512,
             width=512
         ).images
@@ -217,7 +224,7 @@ class Generator:
             default_images.append(image)
 
         if (len(default_images) == 0):
-            raise ValueError("No default images found in the default image directory.")
+            raise ValueError("No default images found in the default image directory. (add some images to ./input/default)")
 
         return default_images
 
