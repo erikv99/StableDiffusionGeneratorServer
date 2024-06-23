@@ -21,8 +21,27 @@ class EnqueueGeneration(Resource):
 
     def get(self):
         
-        # TODO: Maybe it is nice to have get request return a image with last set settings or default.
-        return {"message": "Welcome to the generator API. Please use the POST method to generate images"}
+        settings = GeneratorSettings(
+            Prompt="A young happy male img standing on of a cliff, facting the camera",
+            NegativePrompt=" missing fingers, (blurred background, unsharp background, render, drawing, anime, bad photo, bad photography:1.3), (worst quality, low quality, blurry:1.2), (bad teeth, deformed teeth, deformed lips), (bad anatomy, bad proportions:1.1), (deformed iris, deformed pupils), (deformed eyes, bad eyes), (deformed face, bad face), (ugly facial hair, goody haircut, inconsistent hairstyle) (deformed hands, bad hands, fused fingers), morbid, mutilated, mutation, disfigured", 
+            InferenceSteps= 22,
+            GuidanceScale= 2.5,
+            StyleStrength= 1.3
+        )
+        
+    
+        image = self._generator._process_request(settings)
+        image.format = "PNG" # TODO: CHECK IF THIS IS NEEDED
+        
+        # Convert the image to bytes for sending it back
+        bytes_io = io.BytesIO()
+        image.save(bytes_io, 'PNG')
+        bytes_io.seek(0)
+
+        print("Generated imf byte size:", len(bytes_io.getvalue()))
+
+        return send_file(bytes_io, mimetype='image/png')
+    
 
     def post(self):
 

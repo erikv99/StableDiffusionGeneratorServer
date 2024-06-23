@@ -20,11 +20,13 @@ class Generator:
         Available = 3
         Generating = 4
 
-    BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0_Lightning"
+    LOCAL_PREFIX = "/home/ubuntu/StableDiffusionGeneratorServer/"
+    BASE_MODEL_PATH = LOCAL_PREFIX + "pony_realism"
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
-
+    QUEUE_CHECK_INTERVAL_SECONDS = 20
+    
     def __init__(self):
         
         print("Initializing generator...")
@@ -36,7 +38,7 @@ class Generator:
         self._request_queue: queue[str, GeneratorSettings] = queue.Queue()
 
         print("Clearing Cuda cache...")
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         
         print("Attempting to setup pipeline...")
         self._setup_pipeline()
@@ -51,9 +53,9 @@ class Generator:
         self._status = self.GeneratorStatus.Available
         
         # Start the thread to process the queue
-        self._thread = threading.Thread(target=self._process_queue)
-        self._thread.daemon = True
-        self._thread.start()
+        # self._thread = threading.Thread(target=self._process_queue)
+        # self._thread.daemon = True
+        # self._thread.start()
 
     @staticmethod
     def empty_cuda_cache_if_threshold_reached(threshold_ratio=0.2): 
@@ -73,7 +75,7 @@ class Generator:
         if free_memory < threshold:
 
             print("Memory below threshold. Clearing CUDA cache...")
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
 
     @staticmethod
     def retrieve_cuda_info():
@@ -83,6 +85,9 @@ class Generator:
         cuda_device_name = torch.cuda.get_device_name(cuda_id)
         torch_version = torch.__version__
         return cuda_version, cuda_id, cuda_device_name, torch_version
+
+    def is_ready(self):
+        return self._status is self.GeneratorStatus.Available
 
     # TODO: Consider moving to download helper/service
     def _retrieve_photomaker(self) -> str:
@@ -104,31 +109,48 @@ class Generator:
         return request_id
 
     def _process_queue(self):
+        
         while True:
             
+            while self._status is self.GeneratorStatus.Initializing:
+                print("Generator is initializing. Waiting for initialization to complete...")
+                time.sleep(10)
             
-            while not self._status is self.GeneratorStatus.Generating and not self._request_queue.empty():
+            while self._status is not self.GeneratorStatus.Available:
+                print("Generator is not available. Waiting for generator to become available...")
+                time.sleep(10)
+            
+            if not self._request_queue.empty():
                 
-                request_id, data = self._request_queue.get()
+                request_uuid, data = self._request_queue.get()
+                print(f"Found requests #{request_uuid} in queue. Processing now...")
+                
                 retries = 0
+                max_retries = 3
+                result = None
                 
-                while retries < 3:
+                while retries <= max_retries:
+                    
                     try:
                         result = self._process_request(data)
-                        self._results[request_id] = result
+                        self._results[request_uuid] = result
                         break
+                    
                     except torch.cuda.OutOfMemoryError as e:
                         retries += 1
-                        print(f"Out of memory error: {e}. Retrying ({retries}/3) after clearing cache...")
+                        print(f"Out of memory error: {e}. Retrying ({retries}/{max_retries}) after clearing cache...")
                         self.empty_cuda_cache_if_threshold_reached()
-                        time.sleep(10)  # Wait before retrying
-                if retries == 3:
-                    print(f"Retry failed after 3 attempts")
-                    self._results[request_id] = "Out of memory error"
-                self._request_queue.task_done()
+                        time.sleep(10)  
+
+                if retries > max_retries:
+                    print(f"Retry failed after {max_retries} attempts")
+                    self._results[request_uuid] = "Out of memory error"
                 
-            print("Queue is empty. Checking again in 5 seconds...")
-            time.sleep(5)  # Check the queue every 5 seconds
+                self._request_queue.task_done()
+            
+            torch.cuda.memory_summary(device=None, abbreviated=False)
+            print(f"Queue is empty. Checking again in {self.QUEUE_CHECK_INTERVAL_SECONDS} seconds...")
+            time.sleep(self.QUEUE_CHECK_INTERVAL_SECONDS)
 
     def get_result(self, request_uuid):
         
@@ -145,46 +167,69 @@ class Generator:
     def clear_queue(self):
         self._request_queue.queue.clear()
 
+    def _load_base_model(self):
+        
+        self._pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
+            "SG161222/RealVisXL_V4.0_Lightning",
+            torch_dtype=torch.float16,  
+            use_safetensors=True,
+            variant="fp16"
+        )
+
+    def _load_photomaker_adapter(self):
+        
+        photomaker_model_path = self._retrieve_photomaker()
+        weight_name = os.path.basename(photomaker_model_path)
+        
+        self._pipe.load_photomaker_adapter(
+            pretrained_model_name_or_path_or_dict=photomaker_model_path,
+            weight_name=weight_name
+        )
+        
+        if hasattr(self._pipe, 'id_encoder'):
+            self._pipe.id_encoder.to(self.device)
+        else:
+            raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
+
+    def _initialize_device(self):
+        self.device = torch.device(self.DEVICE)
+        print(f"Using device: {self.device}")
+
     # TODO: Clean up, split in to logical (easier digestable) parts and add comments.
     def _setup_pipeline(self):
 
         try:
             
-            self.device = torch.device(self.DEVICE)
-            print(f"Using device: {self.device}")
-
-            self._pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
-                self.BASE_MODEL_PATH,
-                torch_dtype=torch.float16,
-                use_safetensors=True,
-                variant="fp16"
-            )
+            self._initialize_device()
+            self._load_base_model()
+            self._load_photomaker_adapter()
 
             self._pipe.to(self.device)
 
-            photomaker_model_path = self._retrieve_photomaker()
-            weight_name = os.path.basename(photomaker_model_path)
+            # photomaker_model_path = self._retrieve_photomaker()
+            # weight_name = os.path.basename(photomaker_model_path)
 
-            self._pipe.load_photomaker_adapter(
-                pretrained_model_name_or_path_or_dict=photomaker_model_path,
-                weight_name=weight_name
-            )
+            # self._pipe.load_photomaker_adapter(
+            #     pretrained_model_name_or_path_or_dict=photomaker_model_path,
+            #     weight_name=weight_name
+            # )
 
-            if hasattr(self._pipe, 'id_encoder'):
-                self._pipe.id_encoder.to(self.device)
+            # if hasattr(self._pipe, 'id_encoder'):
+            #     self._pipe.id_encoder.to(self.device)
 
-            else:
-                raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
+            # else:
+            #     raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
 
-            # DPMSolverMultistepScheduler
-            self._pipe.scheduler = DPMSolverMultistepScheduler.from_config(self._pipe.scheduler.config)
-            self._pipe.fuse_lora()
-            
+            self._configure_scheduler()
             print("Pipeline setup completed successfully.")
         
         except Exception as e:
             print(f"Error during pipeline setup: {e}")
             raise
+    
+    def _configure_scheduler(self):
+        self._pipe.scheduler = DPMSolverMultistepScheduler.from_config(self._pipe.scheduler.config)
+        self._pipe.fuse_lora()
         
     def generate_image(self, settings: GeneratorSettings):
 
