@@ -20,8 +20,7 @@ class Generator:
         Available = 3
         Generating = 4
 
-    LOCAL_PREFIX = "/home/ubuntu/StableDiffusionGeneratorServer/"
-    BASE_MODEL_PATH = LOCAL_PREFIX + "pony_realism"
+    BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0_Lightning"
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
