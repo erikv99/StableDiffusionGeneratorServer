@@ -24,7 +24,9 @@ class Generator:
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
-
+    QUEUE_CHECK_INTERVAL_SECONDS = 20
+    DEBUG = True
+    
     def __init__(self):
         
         print("Initializing generator...")
@@ -36,23 +38,19 @@ class Generator:
         self._request_queue: queue[str, GeneratorSettings] = queue.Queue()
 
         print("Clearing Cuda cache...")
-        torch.cuda.empty_cache()
-        
-        print("Attempting to setup pipeline...")
+        # torch.cuda.empty_cache()
+
         self._setup_pipeline()
 
-        if self.DEVICE == "cuda" and not torch.cuda.is_available():
+        if not self.DEBUG and self.DEVICE == "cuda" and not torch.cuda.is_available():
             raise ValueError("CUDA is not available on this device.")
         
-        print("Loading input images...")
-        self._load_input_images()
+        # print("Loading input images...")
+        # self._load_input_images()
 
         print("Generator initialized.")
         self._status = self.GeneratorStatus.Available
-        
-        # Start the thread to process the queue
-        self._thread = threading.Thread(target=self._process_queue)
-        self._thread.daemon = True
+        self._thread = threading.Thread(target=self._process_queue, daemon = True)
         self._thread.start()
 
     @staticmethod
@@ -73,16 +71,19 @@ class Generator:
         if free_memory < threshold:
 
             print("Memory below threshold. Clearing CUDA cache...")
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
 
     @staticmethod
     def retrieve_cuda_info():
-
         cuda_version = torch.version.cuda
         cuda_id = torch.cuda.current_device()
         cuda_device_name = torch.cuda.get_device_name(cuda_id)
         torch_version = torch.__version__
+
         return cuda_version, cuda_id, cuda_device_name, torch_version
+
+    def is_ready(self):
+        return self._status is self.GeneratorStatus.Available
 
     # TODO: Consider moving to download helper/service
     def _retrieve_photomaker(self) -> str:
@@ -96,39 +97,44 @@ class Generator:
 
         return hf_hub_download(repo_id="TencentARC/PhotoMaker", filename="photomaker-v1.bin", repo_type="model")
 
-    def enqueue_request(self, settings: GeneratorSettings) -> str:
-        
-        request_id = str(uuid.uuid4())
-        self._request_queue.put((request_id, settings))
-        
-        return request_id
-
     def _process_queue(self):
+        
         while True:
             
-            
-            while not self._status is self.GeneratorStatus.Generating and not self._request_queue.empty():
+            while self._status in [self.GeneratorStatus.Initializing, self.GeneratorStatus.Generating]:
+                print(f"Generator is {self._status.name}. Waiting...")
+                time.sleep(10)
+
+            try:
                 
-                request_id, data = self._request_queue.get()
+                request_uuid, data = self._request_queue.get(timeout=self.QUEUE_CHECK_INTERVAL_SECONDS)
+                print(f"Processing request #{request_uuid}")
+
                 retries = 0
-                
-                while retries < 3:
+                max_retries = 3
+                result = None
+
+                while retries < max_retries:
                     try:
                         result = self._process_request(data)
-                        self._results[request_id] = result
+                        self._results[request_uuid] = result
                         break
                     except torch.cuda.OutOfMemoryError as e:
                         retries += 1
-                        print(f"Out of memory error: {e}. Retrying ({retries}/3) after clearing cache...")
-                        self.empty_cuda_cache_if_threshold_reached()
-                        time.sleep(10)  # Wait before retrying
-                if retries == 3:
-                    print(f"Retry failed after 3 attempts")
-                    self._results[request_id] = "Out of memory error"
+                        print(f"Out of memory error: {e}. Retrying ({retries}/{max_retries}) after clearing cache...")
+                        torch.cuda.empty_cache()
+                        time.sleep(10)
+
+                if retries == max_retries:
+                    print(f"Retry failed after {max_retries} attempts")
+                    self._results[request_uuid] = "Out of memory error"
+
                 self._request_queue.task_done()
-                
-            print("Queue is empty. Checking again in 5 seconds...")
-            time.sleep(5)  # Check the queue every 5 seconds
+            except queue.Empty:
+                print("Queue is empty. Continuing to wait...")
+
+            if not self.DEBUG:
+                torch.cuda.memory_summary(device=None, abbreviated=False)
 
     def get_result(self, request_uuid):
         
@@ -140,62 +146,99 @@ class Generator:
     def _process_request(self, settings):
         
         self._status = self.GeneratorStatus.Generating
-        return self.generate_image(settings)
+        
+        try:
+            if self.DEBUG:
+                print(f"Mock Processing request: {settings}")
+                return None
+            else:
+                return self.generate_image(settings)
+        finally:
+            self._status = self.GeneratorStatus.Available
     
     def clear_queue(self):
         self._request_queue.queue.clear()
 
+    def _load_base_model(self):
+        
+        self._pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
+            "SG161222/RealVisXL_V4.0_Lightning",
+            torch_dtype=torch.float16,  
+            use_safetensors=True,
+            variant="fp16"
+        )
+
+    def _load_photomaker_adapter(self):
+        
+        photomaker_model_path = self._retrieve_photomaker()
+        weight_name = os.path.basename(photomaker_model_path)
+        
+        self._pipe.load_photomaker_adapter(
+            pretrained_model_name_or_path_or_dict=photomaker_model_path,
+            weight_name=weight_name
+        )
+        
+        if hasattr(self._pipe, 'id_encoder'):
+            self._pipe.id_encoder.to(self.device)
+        else:
+            raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
+
+    def _initialize_device(self):
+        self.device = torch.device(self.DEVICE)
+        print(f"Using device: {self.device}")
+
     # TODO: Clean up, split in to logical (easier digestable) parts and add comments.
     def _setup_pipeline(self):
 
+        if self.DEBUG:
+            print("Running in debug mode. Skipping pipeline setup.")
+            return
+
+        print("Setting up pipeline...")
+        
         try:
             
-            self.device = torch.device(self.DEVICE)
-            print(f"Using device: {self.device}")
-
-            self._pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
-                self.BASE_MODEL_PATH,
-                torch_dtype=torch.float16,
-                use_safetensors=True,
-                variant="fp16"
-            )
+            self._initialize_device()
+            self._load_base_model()
+            self._load_photomaker_adapter()
 
             self._pipe.to(self.device)
 
-            photomaker_model_path = self._retrieve_photomaker()
-            weight_name = os.path.basename(photomaker_model_path)
+            # photomaker_model_path = self._retrieve_photomaker()
+            # weight_name = os.path.basename(photomaker_model_path)
 
-            self._pipe.load_photomaker_adapter(
-                pretrained_model_name_or_path_or_dict=photomaker_model_path,
-                weight_name=weight_name
-            )
+            # self._pipe.load_photomaker_adapter(
+            #     pretrained_model_name_or_path_or_dict=photomaker_model_path,
+            #     weight_name=weight_name
+            # )
 
-            if hasattr(self._pipe, 'id_encoder'):
-                self._pipe.id_encoder.to(self.device)
+            # if hasattr(self._pipe, 'id_encoder'):
+            #     self._pipe.id_encoder.to(self.device)
 
-            else:
-                raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
+            # else:
+            #     raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
 
-            # DPMSolverMultistepScheduler
-            self._pipe.scheduler = DPMSolverMultistepScheduler.from_config(self._pipe.scheduler.config)
-            self._pipe.fuse_lora()
-            
+            self._configure_scheduler()
             print("Pipeline setup completed successfully.")
         
         except Exception as e:
             print(f"Error during pipeline setup: {e}")
             raise
+    
+    def _configure_scheduler(self):
+        self._pipe.scheduler = DPMSolverMultistepScheduler.from_config(self._pipe.scheduler.config)
+        self._pipe.fuse_lora()
         
     def generate_image(self, settings: GeneratorSettings):
-
         if settings is None:
             raise ValueError("No settings have been provided.")
-        
-        generator = torch.Generator(device=self.device).manual_seed(torch.randint(0, 1000000, (1,)).item())
 
-        start_merge_step = int(float(settings.style_strength) / 100 * settings.number_of_steps)
-        if start_merge_step > 30:
-            start_merge_step = 30
+        generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
+
+        # start_merge_step = int(float(settings.style_strength) / 100 * settings.number_of_steps)
+        # if start_merge_step > 30:
+        #     start_merge_step = 30
+        start_merge_step = min(int(float(settings.style_strength) / 100 * settings.number_of_steps), 30)
 
         images = self._pipe(
             prompt=settings.prompt,
@@ -209,10 +252,16 @@ class Generator:
             height=512,
             width=512
         ).images
-
-        # NOTE: This is temporary and should be removed if ever adding multiple image generation support.
         return images[0]
 
+    def get_result(self, request_uuid: str):
+        return self._results.get(request_uuid)
+    
+    def enqueue_request(self, settings: GeneratorSettings) -> str:
+        request_uuid = str(uuid.uuid4())
+        self._request_queue.put((request_uuid, settings))
+        return request_uuid
+    
     # TODO: Move to image loading stuff to it's own module
     def _load_default_images(self):
 

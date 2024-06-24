@@ -1,5 +1,6 @@
 from flask_restful import Resource
 import torch
+import gc
 
 class ClearCache(Resource):
 
@@ -7,4 +8,5 @@ class ClearCache(Resource):
 
         print("\nClear cache request received.\n")
         torch.cuda.empty_cache()
+        gc.collect()
         return {"message": "Cache cleared."}, 200
