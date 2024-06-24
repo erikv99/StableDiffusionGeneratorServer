@@ -73,7 +73,7 @@ def main():
     api.add_resource(EnqueueGeneration, '/enqueue-generation', resource_class_kwargs={'generator': generator})
     api.add_resource(RetrieveOutput, '/retrieve-output/<string:id>', resource_class_kwargs={'generator': generator})
     api.add_resource(ClearCache, '/clear-cache')
-    # api.ap
+    
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
 
 if __name__ == "__main__":
