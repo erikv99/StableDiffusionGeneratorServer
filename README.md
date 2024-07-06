@@ -17,7 +17,7 @@ I Use currently use hypercloud for my setup.
 7. git clone https://github.com/erikv99/StableDiffusionGeneratorServer.git
 8. cd StableDiffusionGeneratorServer
 9. git clone https://github.com/TencentARC/PhotoMaker.git
-10 sudo apt install -y python3-pip
+10. sudo apt install -y python3-pip
 11. sudo apt install -y python3-venv
 12. python3 -m venv env
 13. source env/bin/activate
