@@ -148,6 +148,9 @@ class Generator:
         print("Generation failed.")
         return None
 
+    def get_status(self):
+        return self._status.name
+    
     def get_result(self, request_uuid):
         
         if request_uuid in self._results: 
@@ -202,21 +205,8 @@ class Generator:
 
             self._pipe.to(self.device)
 
-            # photomaker_model_path = self._retrieve_photomaker()
-            # weight_name = os.path.basename(photomaker_model_path)
-
-            # self._pipe.load_photomaker_adapter(
-            #     pretrained_model_name_or_path_or_dict=photomaker_model_path,
-            #     weight_name=weight_name
-            # )
-
-            # if hasattr(self._pipe, 'id_encoder'):
-            #     self._pipe.id_encoder.to(self.device)
-
-            # else:
-            #     raise AttributeError("Pipeline does not have an attribute 'id_encoder'")
-
             self._configure_scheduler()
+            
             print("Pipeline setup completed successfully.")
         
         except Exception as e:
@@ -235,7 +225,7 @@ class Generator:
         generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
         
         start_merge_step = min(int(float(settings.style_strength) / 100 * settings.number_of_steps), 30)
-        start_merge_step = 0.3 # TESTING, TODO: REMOVE / MESS AROUND
+        # start_merge_step = 0.1 # TESTING, TODO: REMOVE / MESS AROUND
 
         images = self._pipe(
             prompt=settings.prompt,

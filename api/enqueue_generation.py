@@ -17,37 +17,13 @@ class EnqueueGeneration(Resource):
         # Since I am testing on an NVIDIA RTX A4000, this code will only use a single generation.
         # Multi-generator support will be added later if deemed necessary.
         self._generator = generator
+        
         print("\nGenerator API initialized.\n")
-
-    def get(self):
-        
-        settings = GeneratorSettings(
-            Prompt="A young happy male img standing on of a cliff, facting the camera",
-            NegativePrompt=" missing fingers, (blurred background, unsharp background, render, drawing, anime, bad photo, bad photography:1.3), (worst quality, low quality, blurry:1.2), (bad teeth, deformed teeth, deformed lips), (bad anatomy, bad proportions:1.1), (deformed iris, deformed pupils), (deformed eyes, bad eyes), (deformed face, bad face), (ugly facial hair, goody haircut, inconsistent hairstyle) (deformed hands, bad hands, fused fingers), morbid, mutilated, mutation, disfigured", 
-            InferenceSteps= 22,
-            GuidanceScale= 2.5,
-            StyleStrength= 1.3
-        )
-        
-    
-        image = self._generator._process_request(settings)
-        image.format = "PNG" # TODO: CHECK IF THIS IS NEEDED
-        
-        # Convert the image to bytes for sending it back
-        bytes_io = io.BytesIO()
-        image.save(bytes_io, 'PNG')
-        bytes_io.seek(0)
-
-        print("Generated imf byte size:", len(bytes_io.getvalue()))
-
-        return send_file(bytes_io, mimetype='image/png')
-    
+        print(f"Generator status: {self._generator.get_status()}\n")
 
     def post(self):
 
         self._generator.empty_cuda_cache_if_threshold_reached()
-
-        print(request.json)
 
         parser = reqparse.RequestParser()
         parser.add_argument('Prompt', type=str, required=True, help='Prompt is required')
