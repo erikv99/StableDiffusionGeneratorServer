@@ -25,7 +25,7 @@ class Generator:
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
     QUEUE_CHECK_INTERVAL_SECONDS = 20
-    DEBUG = True
+    DEBUG = False
     
     def __init__(self):
         
@@ -37,16 +37,13 @@ class Generator:
         self._status = self.GeneratorStatus.Initializing
         self._request_queue: queue[str, GeneratorSettings] = queue.Queue()
 
-        print("Clearing Cuda cache...")
-        # torch.cuda.empty_cache()
-
         self._setup_pipeline()
 
         if not self.DEBUG and self.DEVICE == "cuda" and not torch.cuda.is_available():
             raise ValueError("CUDA is not available on this device.")
         
-        # print("Loading input images...")
-        # self._load_input_images()
+        print("Loading input images...")
+        self._load_input_images()
 
         print("Generator initialized.")
         self._status = self.GeneratorStatus.Available
@@ -100,41 +97,56 @@ class Generator:
     def _process_queue(self):
         
         while True:
-            
             while self._status in [self.GeneratorStatus.Initializing, self.GeneratorStatus.Generating]:
                 print(f"Generator is {self._status.name}. Waiting...")
                 time.sleep(10)
-
+            
             try:
+                self._status = self.GeneratorStatus.Generating
                 
                 request_uuid, data = self._request_queue.get(timeout=self.QUEUE_CHECK_INTERVAL_SECONDS)
                 print(f"Processing request #{request_uuid}")
-
-                retries = 0
-                max_retries = 3
-                result = None
-
-                while retries < max_retries:
-                    try:
-                        result = self._process_request(data)
-                        self._results[request_uuid] = result
-                        break
-                    except torch.cuda.OutOfMemoryError as e:
-                        retries += 1
-                        print(f"Out of memory error: {e}. Retrying ({retries}/{max_retries}) after clearing cache...")
-                        torch.cuda.empty_cache()
-                        time.sleep(10)
-
-                if retries == max_retries:
-                    print(f"Retry failed after {max_retries} attempts")
-                    self._results[request_uuid] = "Out of memory error"
-
+                
+                result = self._process_request_with_retry(data)
+                self._results[request_uuid] = result
+                
+                print(f"Finished processing request #{request_uuid}")
                 self._request_queue.task_done()
+
             except queue.Empty:
                 print("Queue is empty. Continuing to wait...")
 
-            if not self.DEBUG:
-                torch.cuda.memory_summary(device=None, abbreviated=False)
+            except Exception as e:
+                print(f"An error occurred while processing request: {str(e)}")
+                # Store the error in the results dict?, TODO: better error handling
+
+            finally:
+                self._status = self.GeneratorStatus.Available
+                if not self.DEBUG:
+                    torch.cuda.memory_summary(device=None, abbreviated=False)
+
+    def _process_request_with_retry(self, settings, max_retries=3):
+        
+        for retry in range(max_retries):
+        
+            try:
+                if self.DEBUG:
+                    print(f"Mock Processing request: {settings}")
+                    return None
+    
+                else:
+                    image = self.generate_image(settings)
+                    return image
+        
+            except torch.cuda.OutOfMemoryError as e:
+                
+                print(f"Out of memory error: {e}. Retrying ({retry + 1}/{max_retries}) after clearing cache...")
+                torch.cuda.empty_cache()
+                time.sleep(10)
+        
+        print(f"Processing failed, the maximum of {max_retries} retries has been hit.")
+        print("Generation failed.")
+        return None
 
     def get_result(self, request_uuid):
         
@@ -143,24 +155,10 @@ class Generator:
         
         raise ValueError(f"Request with UUID {request_uuid} not found.")
 
-    def _process_request(self, settings):
-        
-        self._status = self.GeneratorStatus.Generating
-        
-        try:
-            if self.DEBUG:
-                print(f"Mock Processing request: {settings}")
-                return None
-            else:
-                return self.generate_image(settings)
-        finally:
-            self._status = self.GeneratorStatus.Available
-    
     def clear_queue(self):
         self._request_queue.queue.clear()
 
     def _load_base_model(self):
-        
         self._pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
             "SG161222/RealVisXL_V4.0_Lightning",
             torch_dtype=torch.float16,  
@@ -230,15 +228,14 @@ class Generator:
         self._pipe.fuse_lora()
         
     def generate_image(self, settings: GeneratorSettings):
+        
         if settings is None:
             raise ValueError("No settings have been provided.")
 
         generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
-
-        # start_merge_step = int(float(settings.style_strength) / 100 * settings.number_of_steps)
-        # if start_merge_step > 30:
-        #     start_merge_step = 30
+        
         start_merge_step = min(int(float(settings.style_strength) / 100 * settings.number_of_steps), 30)
+        start_merge_step = 0.3 # TESTING, TODO: REMOVE / MESS AROUND
 
         images = self._pipe(
             prompt=settings.prompt,

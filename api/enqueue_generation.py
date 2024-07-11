@@ -58,7 +58,7 @@ class EnqueueGeneration(Resource):
         args = parser.parse_args()
 
         # TODO: Log the request details to file.
-        print("User Agent:", request.user_agent.string)
+        # print("User Agent:", request.user_agent.string)
 
         settings = GeneratorSettings(
             args.Prompt, 
@@ -67,12 +67,12 @@ class EnqueueGeneration(Resource):
             args.StyleStrength, 
             args.InferenceSteps)
 
-        print("Used Settings:")
-        print("  - Prompt:", settings.prompt)
-        print("  - Negative Prompt:", settings.negative_prompt)
-        print("  - Inference Steps:", settings.number_of_steps)
-        print("  - Guidance Scale:", settings.guidance_scale)
-        print("  - Style Strength:", settings.style_strength)
+        # print("Used Settings:")
+        # print("  - Prompt:", settings.prompt)
+        # print("  - Negative Prompt:", settings.negative_prompt)
+        # print("  - Inference Steps:", settings.number_of_steps)
+        # print("  - Guidance Scale:", settings.guidance_scale)
+        # print("  - Style Strength:", settings.style_strength)
 
         try:
             request_uuid = self._generator.enqueue_request(settings)
