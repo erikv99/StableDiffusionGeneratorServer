@@ -2,14 +2,13 @@ import io
 from flask import jsonify, send_file
 from flask_restful import Resource
 
-from generator import Generator
-
-# Will attempt to retrieve the output from a specific generation.
+from queue_handler import QueueHandler
 
 class RetrieveOutput(Resource):
     
-    def __init__(self, generator: Generator):
-        self._generator = generator
+    def __init__(self, queue_handler: QueueHandler):
+        
+        self.queue_handler = queue_handler
         print("\nRetrieve Output API initialized.\n")
         
     # def get(self, id):
@@ -20,7 +19,7 @@ class RetrieveOutput(Resource):
 
     def get(self, id):
         
-        image = self._generator.get_result(id)
+        image = self.queue_handler.get_result(id)
         
         if image is None:
             return jsonify({'status': 'pending'}), 202

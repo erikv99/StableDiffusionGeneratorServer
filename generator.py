@@ -24,31 +24,22 @@ class Generator:
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
-    QUEUE_CHECK_INTERVAL_SECONDS = 20
     DEBUG = False
     
     def __init__(self):
         
         print("Initializing generator...")
-        
-        self._pipe = None
-        self._input_images = []
-        self._results = {}
         self._status = self.GeneratorStatus.Initializing
-        self._request_queue: queue[str, GeneratorSettings] = queue.Queue()
-
-        self._setup_pipeline()
-
+        
         if not self.DEBUG and self.DEVICE == "cuda" and not torch.cuda.is_available():
             raise ValueError("CUDA is not available on this device.")
         
-        print("Loading input images...")
+        self._pipe = None
+        self._results = {}
+        self._request_queue: queue[str, GeneratorSettings] = queue.Queue()
+        self._setup_pipeline()
         self._load_input_images()
-
-        print("Generator initialized.")
         self._status = self.GeneratorStatus.Available
-        self._thread = threading.Thread(target=self._process_queue, daemon = True)
-        self._thread.start()
 
     @staticmethod
     def empty_cuda_cache_if_threshold_reached(threshold_ratio=0.2): 
@@ -218,28 +209,29 @@ class Generator:
         self._pipe.fuse_lora()
         
     def generate_image(self, settings: GeneratorSettings):
-        
         if settings is None:
             raise ValueError("No settings have been provided.")
 
-        generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
-        
-        start_merge_step = min(int(float(settings.style_strength) / 100 * settings.number_of_steps), 30)
-        # start_merge_step = 0.1 # TESTING, TODO: REMOVE / MESS AROUND
+        self._status = self.GeneratorStatus.Generating
+        try:
+            generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
+            start_merge_step = min(int(float(settings.style_strength) / 100 * settings.number_of_steps), 30)
 
-        images = self._pipe(
-            prompt=settings.prompt,
-            input_id_images=self._input_images,
-            negative_prompt=settings.negative_prompt,
-            num_images_per_prompt=1,
-            num_inference_steps=settings.number_of_steps,
-            start_merge_step=start_merge_step,
-            generator=generator,
-            guidance_scale=settings.guidance_scale,
-            height=512,
-            width=512
-        ).images
-        return images[0]
+            images = self._pipe(
+                prompt=settings.prompt,
+                input_id_images=self._input_images,
+                negative_prompt=settings.negative_prompt,
+                num_images_per_prompt=1,
+                num_inference_steps=settings.number_of_steps,
+                start_merge_step=start_merge_step,
+                generator=generator,
+                guidance_scale=settings.guidance_scale,
+                height=512,
+                width=512
+            ).images
+            return images[0]
+        finally:
+            self._status = self.GeneratorStatus.Available
 
     def get_result(self, request_uuid: str):
         return self._results.get(request_uuid)
