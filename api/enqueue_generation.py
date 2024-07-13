@@ -35,7 +35,7 @@ class EnqueueGeneration(Resource):
 
         except Exception as e:
             return {"error": str(e.args[0])}, 400
-        
+     
     #     if self.SAVE_TO_SERVER:
     #         self._save_img_to_server(image)
 

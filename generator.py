@@ -35,10 +35,9 @@ class Generator:
             raise ValueError("CUDA is not available on this device.")
         
         self._pipe = None
-        self._results = {}
-        self._request_queue: queue[str, GeneratorSettings] = queue.Queue()
         self._setup_pipeline()
         self._load_input_images()
+        
         self._status = self.GeneratorStatus.Available
 
     @staticmethod
@@ -85,73 +84,9 @@ class Generator:
 
         return hf_hub_download(repo_id="TencentARC/PhotoMaker", filename="photomaker-v1.bin", repo_type="model")
 
-    def _process_queue(self):
-        
-        while True:
-            while self._status in [self.GeneratorStatus.Initializing, self.GeneratorStatus.Generating]:
-                print(f"Generator is {self._status.name}. Waiting...")
-                time.sleep(10)
-            
-            try:
-                self._status = self.GeneratorStatus.Generating
-                
-                request_uuid, data = self._request_queue.get(timeout=self.QUEUE_CHECK_INTERVAL_SECONDS)
-                print(f"Processing request #{request_uuid}")
-                
-                result = self._process_request_with_retry(data)
-                self._results[request_uuid] = result
-                
-                print(f"Finished processing request #{request_uuid}")
-                self._request_queue.task_done()
-
-            except queue.Empty:
-                print("Queue is empty. Continuing to wait...")
-
-            except Exception as e:
-                print(f"An error occurred while processing request: {str(e)}")
-                # Store the error in the results dict?, TODO: better error handling
-
-            finally:
-                self._status = self.GeneratorStatus.Available
-                if not self.DEBUG:
-                    torch.cuda.memory_summary(device=None, abbreviated=False)
-
-    def _process_request_with_retry(self, settings, max_retries=3):
-        
-        for retry in range(max_retries):
-        
-            try:
-                if self.DEBUG:
-                    print(f"Mock Processing request: {settings}")
-                    return None
-    
-                else:
-                    image = self.generate_image(settings)
-                    return image
-        
-            except torch.cuda.OutOfMemoryError as e:
-                
-                print(f"Out of memory error: {e}. Retrying ({retry + 1}/{max_retries}) after clearing cache...")
-                torch.cuda.empty_cache()
-                time.sleep(10)
-        
-        print(f"Processing failed, the maximum of {max_retries} retries has been hit.")
-        print("Generation failed.")
-        return None
-
     def get_status(self):
         return self._status.name
     
-    def get_result(self, request_uuid):
-        
-        if request_uuid in self._results: 
-            return self._results.get(request_uuid) 
-        
-        raise ValueError(f"Request with UUID {request_uuid} not found.")
-
-    def clear_queue(self):
-        self._request_queue.queue.clear()
-
     def _load_base_model(self):
         self._pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
             "SG161222/RealVisXL_V4.0_Lightning",
@@ -161,7 +96,6 @@ class Generator:
         )
 
     def _load_photomaker_adapter(self):
-        
         photomaker_model_path = self._retrieve_photomaker()
         weight_name = os.path.basename(photomaker_model_path)
         
@@ -209,10 +143,12 @@ class Generator:
         self._pipe.fuse_lora()
         
     def generate_image(self, settings: GeneratorSettings):
+        
         if settings is None:
             raise ValueError("No settings have been provided.")
 
         self._status = self.GeneratorStatus.Generating
+        
         try:
             generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
             start_merge_step = min(int(float(settings.style_strength) / 100 * settings.number_of_steps), 30)
@@ -229,18 +165,12 @@ class Generator:
                 height=512,
                 width=512
             ).images
+            
             return images[0]
+        
         finally:
             self._status = self.GeneratorStatus.Available
 
-    def get_result(self, request_uuid: str):
-        return self._results.get(request_uuid)
-    
-    def enqueue_request(self, settings: GeneratorSettings) -> str:
-        request_uuid = str(uuid.uuid4())
-        self._request_queue.put((request_uuid, settings))
-        return request_uuid
-    
     # TODO: Move to image loading stuff to it's own module
     def _load_default_images(self):
 
