@@ -1,15 +1,19 @@
 /env
-/myVenv
-*.png
-*.jpg
 /__pycache__/*
 /api/__pycache__/*
-
 *.pem
 *.key
 *.pub
 
-# Ignore all created input folder except the default one
+# Ignore all contents in the input folder
 /input/*
-!/input/default/
 
+# But don't ignore the default folder and its contents
+!/input/default/
+!/input/default/*
+
+# Ignore specific file types everywhere except in input/default
+*.png
+*.jpg
+!/input/default/*.png
+!/input/default/*.jpg
