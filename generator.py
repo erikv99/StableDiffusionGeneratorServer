@@ -20,35 +20,25 @@ class Generator:
         Available = 3
         Generating = 4
 
-    BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0_Lightning"
+    BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0"
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
-    QUEUE_CHECK_INTERVAL_SECONDS = 20
     DEBUG = False
     
     def __init__(self):
         
         print("Initializing generator...")
-        
-        self._pipe = None
-        self._input_images = []
-        self._results = {}
         self._status = self.GeneratorStatus.Initializing
-        self._request_queue: queue[str, GeneratorSettings] = queue.Queue()
-
-        self._setup_pipeline()
-
+        
         if not self.DEBUG and self.DEVICE == "cuda" and not torch.cuda.is_available():
             raise ValueError("CUDA is not available on this device.")
         
-        print("Loading input images...")
+        self._pipe = None
+        self._setup_pipeline()
         self._load_input_images()
-
-        print("Generator initialized.")
+        
         self._status = self.GeneratorStatus.Available
-        self._thread = threading.Thread(target=self._process_queue, daemon = True)
-        self._thread.start()
 
     @staticmethod
     def empty_cuda_cache_if_threshold_reached(threshold_ratio=0.2): 
@@ -94,73 +84,9 @@ class Generator:
 
         return hf_hub_download(repo_id="TencentARC/PhotoMaker", filename="photomaker-v1.bin", repo_type="model")
 
-    def _process_queue(self):
-        
-        while True:
-            while self._status in [self.GeneratorStatus.Initializing, self.GeneratorStatus.Generating]:
-                print(f"Generator is {self._status.name}. Waiting...")
-                time.sleep(10)
-            
-            try:
-                self._status = self.GeneratorStatus.Generating
-                
-                request_uuid, data = self._request_queue.get(timeout=self.QUEUE_CHECK_INTERVAL_SECONDS)
-                print(f"Processing request #{request_uuid}")
-                
-                result = self._process_request_with_retry(data)
-                self._results[request_uuid] = result
-                
-                print(f"Finished processing request #{request_uuid}")
-                self._request_queue.task_done()
-
-            except queue.Empty:
-                print("Queue is empty. Continuing to wait...")
-
-            except Exception as e:
-                print(f"An error occurred while processing request: {str(e)}")
-                # Store the error in the results dict?, TODO: better error handling
-
-            finally:
-                self._status = self.GeneratorStatus.Available
-                if not self.DEBUG:
-                    torch.cuda.memory_summary(device=None, abbreviated=False)
-
-    def _process_request_with_retry(self, settings, max_retries=3):
-        
-        for retry in range(max_retries):
-        
-            try:
-                if self.DEBUG:
-                    print(f"Mock Processing request: {settings}")
-                    return None
-    
-                else:
-                    image = self.generate_image(settings)
-                    return image
-        
-            except torch.cuda.OutOfMemoryError as e:
-                
-                print(f"Out of memory error: {e}. Retrying ({retry + 1}/{max_retries}) after clearing cache...")
-                torch.cuda.empty_cache()
-                time.sleep(10)
-        
-        print(f"Processing failed, the maximum of {max_retries} retries has been hit.")
-        print("Generation failed.")
-        return None
-
     def get_status(self):
         return self._status.name
     
-    def get_result(self, request_uuid):
-        
-        if request_uuid in self._results: 
-            return self._results.get(request_uuid) 
-        
-        raise ValueError(f"Request with UUID {request_uuid} not found.")
-
-    def clear_queue(self):
-        self._request_queue.queue.clear()
-
     def _load_base_model(self):
         self._pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
             "SG161222/RealVisXL_V4.0_Lightning",
@@ -170,7 +96,6 @@ class Generator:
         )
 
     def _load_photomaker_adapter(self):
-        
         photomaker_model_path = self._retrieve_photomaker()
         weight_name = os.path.basename(photomaker_model_path)
         
@@ -214,7 +139,7 @@ class Generator:
             raise
     
     def _configure_scheduler(self):
-        self._pipe.scheduler = DPMSolverMultistepScheduler.from_config(self._pipe.scheduler.config)
+        self._pipe.scheduler = DPMSolverSDEScheduler.from_config(self._pipe.scheduler.config)
         self._pipe.fuse_lora()
         
     def generate_image(self, settings: GeneratorSettings):
@@ -222,33 +147,28 @@ class Generator:
         if settings is None:
             raise ValueError("No settings have been provided.")
 
-        generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
+        self._status = self.GeneratorStatus.Generating
         
-        start_merge_step = min(int(float(settings.style_strength) / 100 * settings.number_of_steps), 30)
-        # start_merge_step = 0.1 # TESTING, TODO: REMOVE / MESS AROUND
+        try:
+            generator = torch.Generator(device=self.DEVICE).manual_seed(torch.randint(0, 1000000, (1,)).item())
+            start_merge_step = min(int(float(settings.style_strength) / 100 * settings.number_of_steps), 30)
 
-        images = self._pipe(
-            prompt=settings.prompt,
-            input_id_images=self._input_images,
-            negative_prompt=settings.negative_prompt,
-            num_images_per_prompt=1,
-            num_inference_steps=settings.number_of_steps,
-            start_merge_step=start_merge_step,
-            generator=generator,
-            guidance_scale=settings.guidance_scale,
-            height=512,
-            width=512
-        ).images
-        return images[0]
+            images = self._pipe(
+                prompt=settings.prompt,
+                input_id_images=self._input_images,
+                negative_prompt=settings.negative_prompt,
+                num_images_per_prompt=1,
+                num_inference_steps=settings.number_of_steps,
+                start_merge_step=start_merge_step,
+                generator=generator,
+                guidance_scale=settings.guidance_scale
+            ).images
+            
+            return images[0]
+        
+        finally:
+            self._status = self.GeneratorStatus.Available
 
-    def get_result(self, request_uuid: str):
-        return self._results.get(request_uuid)
-    
-    def enqueue_request(self, settings: GeneratorSettings) -> str:
-        request_uuid = str(uuid.uuid4())
-        self._request_queue.put((request_uuid, settings))
-        return request_uuid
-    
     # TODO: Move to image loading stuff to it's own module
     def _load_default_images(self):
 

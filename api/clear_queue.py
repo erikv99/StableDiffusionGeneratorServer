@@ -1,12 +1,11 @@
 from flask_restful import Resource
-from generator import Generator
+from queue_handler import QueueHandler
 
 class ClearQueue(Resource):
     
-    def __init__(self, generator: Generator):
-        self.generator = generator
-        print("\nClear Queue API initialized.\n")
+    def __init__(self, queue_handler: QueueHandler):
+        self._queue_handler = queue_handler
         
     def get(self):
-        self.generator.clear_queue()
+        self._queue_handler.clear_queue()
         return {"message": "Queue cleared."}
