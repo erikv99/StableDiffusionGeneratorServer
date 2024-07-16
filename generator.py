@@ -20,7 +20,7 @@ class Generator:
         Available = 3
         Generating = 4
 
-    BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0_Lightning"
+    BASE_MODEL_PATH = "SG161222/RealVisXL_V4.0"
     DEVICE = "cuda"
     DEFAULT_IMAGE_DIR = "./input/default"
     INPUT_DIR = "./input"
@@ -139,7 +139,7 @@ class Generator:
             raise
     
     def _configure_scheduler(self):
-        self._pipe.scheduler = DPMSolverMultistepScheduler.from_config(self._pipe.scheduler.config)
+        self._pipe.scheduler = DPMSolverSDEScheduler.from_config(self._pipe.scheduler.config)
         self._pipe.fuse_lora()
         
     def generate_image(self, settings: GeneratorSettings):
@@ -161,9 +161,7 @@ class Generator:
                 num_inference_steps=settings.number_of_steps,
                 start_merge_step=start_merge_step,
                 generator=generator,
-                guidance_scale=settings.guidance_scale,
-                height=512,
-                width=512
+                guidance_scale=settings.guidance_scale
             ).images
             
             return images[0]

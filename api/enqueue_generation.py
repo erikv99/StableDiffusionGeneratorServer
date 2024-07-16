@@ -35,14 +35,3 @@ class EnqueueGeneration(Resource):
 
         except Exception as e:
             return {"error": str(e.args[0])}, 400
-     
-    #     if self.SAVE_TO_SERVER:
-    #         self._save_img_to_server(image)
-
-    # def _save_img_to_server(self, image):
-
-    #     output_dir = "./output"
-    #     os.makedirs(output_dir, exist_ok=True)
-    #     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    #     output_path = os.path.join(output_dir, f"generated_image_{timestamp}.png")
-    #     image.save(output_path)
